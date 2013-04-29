@@ -1,0 +1,124 @@
+#!/usr/bin/env python
+"""
+sql.mit.edu account management system
+
+This module contains convenience methods for user account
+manipulation, including but not limited account creation, and password
+generation.
+"""
+
+import random
+import string
+import sys
+import os
+import json
+
+from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound
+from sqlalchemy.exc import IntegrityError
+
+import database
+
+def format_response(inp):
+    inp['status'] = 0
+    if 'error' in inp:
+        inp['status'] = 1
+    return json.dumps(inp)
+
+def generate_password(length=10):
+    """
+    Generate a random password of the specified length (10 by default)
+    using the ascii letters, digits, and some special characters.
+    """
+    available_chars = string.ascii_letters + string.digits + '!@#$%^&*()'
+    return ''.join([random.choice(available_chars) for _ in xrange(length)])
+
+def create(username, target):
+    if not is_authorized(username, target):
+        return {'error': "User '%s' not authorized for '%s'" % (username, target)}
+    s = database.get_session()
+    password = generate_password()
+    user = database.User(target, password, 'Tester created by achernya',
+                         'achernya+test@mit.edu')
+    s.add(user)
+    s.add(database.UserQuota(user))
+    s.add(database.UserStat(user))
+    try:
+        s.commit()
+    except IntegrityError, e:
+        return {'error': "User '%s' already has a sql account!" % (username,)}
+
+    result = s.execute(
+        "CREATE USER :user@'%' IDENTIFIED BY :pass",
+        {'user': target, 'pass': password}
+        )
+    
+    return {'password': password}
+
+def delete(username, target):
+    if not is_authorized(username, target):
+        return {'error': "User '%s' not authorized for '%s'" % (username, target)}
+    s = database.get_session()
+    try:
+        user = s.query(database.User).filter_by(Username=target).one()
+    except MultipleResultsFound, e:
+        return {'error': 'Fatal error: username uniqueness constraint was violated.'}
+    except NoResultFound, e:
+        return {'error': 'You are not signed up for a sql account'}
+    s.delete(user)
+    s.commit()
+    
+    result = s.execute(
+        "DROP USER :user@'%'",
+        {'user': target}
+        )
+
+    return {}
+
+def whoami(*args):
+    kerberos_name = os.environ['REMOTE_USER']
+    username, _ = string.split(kerberos_name, '@', 2)
+    s = database.get_session()
+    exists = True
+    try:
+        s.query(database.User).filter_by(Username=username).one()
+    except:
+        exists = False
+    return {'krb5_princ': kerberos_name, 'username': username, 'exists': exists}
+
+def is_authorized(username, target):
+    # THE RULES:
+    # -- a user is authorized for itself
+    # -- a user is authorized on lockers they have an 'a' bit on
+    # -- the sql maintainer team is authorized on all queries
+    # -- all else is unauthorized
+    if username == target:
+        return True
+    if target == 'tester-achernya':
+        return True
+    return False
+
+if __name__ == '__main__':
+    # Figure out which function we are supposed to run
+    argv = sys.argv
+    argc = len(argv)
+    if argc == 1:
+        print format_response({'error': 'No operation specified. Try `remctl sql help`.'})
+        sys.exit(1)
+    mode = argv[1]
+    ops = {'create': create, 
+           'delete': delete,
+           'whoami': whoami,
+           }
+    op = ops.get(mode, None)
+    if op == None:
+        print format_response({'error': "Operation '%s' not known. Try `remctl sql help`." % (mode,)})
+        sys.exit(1)
+    # Now, figure out what the target locker is. It's possible there
+    # isn't one, in which case we use the username as the sole argument
+    username = whoami()['username']
+    args = username
+    # Throw away any other arguments for now
+    if argc > 2:
+        args = argv[2]
+    
+    print format_response(op(username, args))

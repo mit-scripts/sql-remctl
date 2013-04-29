@@ -1,0 +1,9 @@
+#!/bin/sh
+cat <<EOF
+Usage: remctl sql.mit.edu <command> <subcommand> [..args..]
+Commands:
+  account create   - create a sql.mit.edu account
+  account delete   - delete a sql.mit.edu account
+  account whoami   - check who the sql.mit.edu thinks you are
+  help <anything>  - print this help
+EOF
