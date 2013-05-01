@@ -19,6 +19,12 @@ from sqlalchemy.exc import IntegrityError
 import database
 
 def format_response(inp):
+    """
+    Format the dictionary representing the response into a valid,
+    machine-readable format. This includes injecting a "status" field.
+    Currently, the machine-readable format is json, but this may
+    change in the future.
+    """
     inp['status'] = 0
     if 'error' in inp:
         inp['status'] = 1
@@ -33,8 +39,13 @@ def generate_password(length=10):
     return ''.join([random.choice(available_chars) for _ in xrange(length)])
 
 def create(username, target):
+    """
+    Create the specified target account, if the username (originator)
+    is authorized.
+    """
     if not is_authorized(username, target):
-        return {'error': "User '%s' not authorized for '%s'" % (username, target)}
+        return {'error': "User '%s' not authorized for '%s'" %
+                (username, target)}
     s = database.get_session()
     password = generate_password()
     user = database.User(target, password, 'Tester created by achernya',
@@ -56,12 +67,14 @@ def create(username, target):
 
 def delete(username, target):
     if not is_authorized(username, target):
-        return {'error': "User '%s' not authorized for '%s'" % (username, target)}
+        return {'error': "User '%s' not authorized for '%s'" %
+                (username, target)}
     s = database.get_session()
     try:
         user = s.query(database.User).filter_by(Username=target).one()
     except MultipleResultsFound, e:
-        return {'error': 'Fatal error: username uniqueness constraint was violated.'}
+        return {'error':
+                    'Fatal error: username uniqueness constraint was violated.'}
     except NoResultFound, e:
         return {'error': 'You are not signed up for a sql account'}
     s.delete(user)
@@ -97,12 +110,13 @@ def is_authorized(username, target):
         return True
     return False
 
-if __name__ == '__main__':
+def main():
     # Figure out which function we are supposed to run
     argv = sys.argv
     argc = len(argv)
     if argc == 1:
-        print format_response({'error': 'No operation specified. Try `remctl sql help`.'})
+        print format_response(
+            {'error':'No operation specified. Try `remctl sql help`.'})
         sys.exit(1)
     mode = argv[1]
     ops = {'create': create, 
@@ -111,7 +125,9 @@ if __name__ == '__main__':
            }
     op = ops.get(mode, None)
     if op == None:
-        print format_response({'error': "Operation '%s' not known. Try `remctl sql help`." % (mode,)})
+        print format_response(
+            {'error': "Operation '%s' not known. Try `remctl sql help`."
+             % (mode,)})
         sys.exit(1)
     # Now, figure out what the target locker is. It's possible there
     # isn't one, in which case we use the username as the sole argument
@@ -122,3 +138,6 @@ if __name__ == '__main__':
         args = argv[2]
     
     print format_response(op(username, args))
+
+if __name__ == '__main__':
+    main()
