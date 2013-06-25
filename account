@@ -76,7 +76,7 @@ def delete(username, target):
         return {'error':
                     'Fatal error: username uniqueness constraint was violated.'}
     except NoResultFound, e:
-        return {'error': 'You are not signed up for a sql account'}
+        return {'error': "User '%s' is not signed up for a sql account" % (target,)}
     s.delete(user)
     s.commit()
     
