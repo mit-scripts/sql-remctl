@@ -56,7 +56,7 @@ class DBOwner(Base):
         return "<DBOwner('%d', '%d', '%d')>"  \
             % (self.DatabaseId, self.UserId, self.GroupId)
 
-class DB(Base):
+class Database(Base):
     __tablename__ = 'DB'
     DatabaseId = sqlalchemy.Column(sqlalchemy.Integer(10), primary_key=True, autoincrement=True)
     Name = sqlalchemy.Column(sqlalchemy.VARCHAR(200), unique=True)
@@ -76,7 +76,7 @@ class DB(Base):
         self.bEnabled = 1
 
     def __repr__(self):
-        return "<DB('%d', '%s', '%d')>"  \
+        return "<Database('%d', '%s', '%d')>"  \
             % (self.DatabaseId, self.Name, self.nBytes)
 
 class UserQuota(Base):
