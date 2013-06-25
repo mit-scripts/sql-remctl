@@ -25,6 +25,60 @@ Base = sqlalchemy.ext.declarative.declarative_base()
 def get_session():
     return _session()
 
+class DBQuota(Base):
+    __tablename__ = 'DBQuota'
+    DatabaseId = sqlalchemy.Column(sqlalchemy.Integer(10), ForeignKey("DB.DatabaseId"), primary_key=True)
+    nBytesSoft = sqlalchemy.Column(sqlalchemy.Integer(10))
+    nBytesHard = sqlalchemy.Column(sqlalchemy.Integer(10))
+    dCreated = sqlalchemy.Column(sqlalchemy.DateTime())
+
+    def __init__(self, database):
+        self.database = database
+        self.nBytesSoft = 0
+        self.nBytesHard = 0
+        self.dCreated = dt.now()
+
+    def __repr__(self):
+        return "<DBQuota('%d', '%d', '%d')>"  \
+            % (self.DatabaseId, self.nBytesSoft, self.nBytesHard)
+
+class DBOwner(Base):
+    __tablename__ = 'DBOwner'
+    DatabaseId = sqlalchemy.Column(sqlalchemy.Integer(10), ForeignKey("DB.DatabaseId"), primary_key=True)
+    UserId = sqlalchemy.Column(sqlalchemy.Integer(10), ForeignKey("User.UserId"), primary_key=True)
+    GroupId = sqlalchemy.Column(sqlalchemy.Integer(10))
+
+    def __init__(self, user, database):
+        self.user = user
+        self.database = database
+
+    def __repr__(self):
+        return "<DBOwner('%d', '%d', '%d')>"  \
+            % (self.DatabaseId, self.UserId, self.GroupId)
+
+class DB(Base):
+    __tablename__ = 'DB'
+    DatabaseId = sqlalchemy.Column(sqlalchemy.Integer(10), primary_key=True, autoincrement=True)
+    Name = sqlalchemy.Column(sqlalchemy.VARCHAR(200), unique=True)
+    nBytes = sqlalchemy.Column(sqlalchemy.Integer(10))
+    dLastCheck = sqlalchemy.Column(sqlalchemy.DateTime())
+    dCreated = sqlalchemy.Column(sqlalchemy.DateTime())
+    bEnabled = sqlalchemy.Column(sqlalchemy.Integer(3))
+
+    quota = sqlalchemy.orm.relationship(DBQuota, backref=sqlalchemy.orm.backref('database'), cascade='all', uselist=False)
+    owner = sqlalchemy.orm.relationship(DBOwner, backref=sqlalchemy.orm.backref('database'), cascade='all', uselist=False)
+
+    def __init__(self, Name):
+        self.Name = Name
+        self.nBytes = 0
+        self.dLastCheck = dt(1900, 1, 1, tzinfo=None)
+        self.dCreated = dt.now()
+        self.bEnabled = 1
+
+    def __repr__(self):
+        return "<DB('%d', '%s', '%d')>"  \
+            % (self.DatabaseId, self.Name, self.nBytes)
+
 class UserQuota(Base):
     __tablename__ = 'UserQuota'
     UserId = sqlalchemy.Column(sqlalchemy.Integer(10), ForeignKey("User.UserId"), primary_key=True)
@@ -75,6 +129,7 @@ class User(Base):
 
     quota = sqlalchemy.orm.relationship(UserQuota, backref=sqlalchemy.orm.backref('user'), cascade='all')
     stat = sqlalchemy.orm.relationship(UserStat, backref=sqlalchemy.orm.backref('user'), cascade='all')
+    databases = sqlalchemy.orm.relationship(DBOwner, backref=sqlalchemy.orm.backref('user'), cascade='all')
 
     def __init__(self, Username, Password, Name, Email):
         self.Username = Username
@@ -88,4 +143,3 @@ class User(Base):
     
     def __repr__(self):
         return "<User('%d','%s')>" % (self.UserId, self.Username)
-
