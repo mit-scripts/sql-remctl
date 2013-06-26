@@ -156,22 +156,26 @@ def main():
     if op == None:
         print format_response(
             {'error': "Operation '%s %s' not known. Try `remctl sql help`."
-             % (argv[0], mode,)})
+             % (base, mode,)})
         sys.exit(1)
     # Now, figure out what the target locker is. It's possible there
     # isn't one, in which case we use the username as the sole argument
     username = whoami()['username']
     target = None
     args = None
+    # Horrible special case: we don't actually want whoami to take a target, so append ''
+    if base == 'account' and mode == 'whoami':
+        argv += ['']
     try:
         target, args = argv[2], argv[3:]
     except:
         print format_response({'error': 'Insufficient arguments specified'})
-        return
+        sys.exit(1)
     try:
         print format_response(op(username, target, args))
     except Exception as e:
         print format_response({'error': str(e)})
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()
