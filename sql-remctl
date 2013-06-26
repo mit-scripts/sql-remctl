@@ -139,7 +139,19 @@ def database_create(username, target, args):
     user = get_user(s, target)
     if len(args) != 1:
         raise Exception("Invalid number of arguments specified")
+
     db_name = args[0]
+
+    # We can only create databases if we're under the limit
+    have_dbs = sum([x.database.bEnabled for x in user.databases])
+    if have_dbs >= user.quota.nDatabasesHard:
+        raise Exception("Cannot create database '%s'; '%s' has %d but the limit is %d" \
+                            % (db_name, target, have_dbs, user.quota.nDatabasesHard))
+    # Similarly, if the databases are too large, fail out
+    if user.quota.nBytes > user.quota.nBytesHard:
+        raise Exception("Cannot create database '%s'; '%s' has used %d bytes but the limit is %d" \
+                            % (db_name, target, user.quota.nBytes, user.quota.nBytesHard))
+
     full_db_name = '%s+%s' % (target, db_name)
     db = database.Database(full_db_name)
     s.add(db)
