@@ -128,8 +128,8 @@ class User(Base):
     dSignup = sqlalchemy.Column(sqlalchemy.DateTime())
     bEnabled = sqlalchemy.Column(sqlalchemy.Integer(3))
 
-    quota = sqlalchemy.orm.relationship(UserQuota, backref=sqlalchemy.orm.backref('user'), cascade='all')
-    stat = sqlalchemy.orm.relationship(UserStat, backref=sqlalchemy.orm.backref('user'), cascade='all')
+    quota = sqlalchemy.orm.relationship(UserQuota, backref=sqlalchemy.orm.backref('user'), cascade='all', uselist=False)
+    stat = sqlalchemy.orm.relationship(UserStat, backref=sqlalchemy.orm.backref('user'), cascade='all', uselist=False)
     databases = sqlalchemy.orm.relationship(DBOwner, backref=sqlalchemy.orm.backref('user'), cascade='all')
 
     def __init__(self, Username, Password, Name, Email):
