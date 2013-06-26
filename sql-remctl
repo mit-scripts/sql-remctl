@@ -1,0 +1,186 @@
+#!/usr/bin/env python
+"""
+sql.mit.edu account management system
+
+This module contains convenience methods for user account
+manipulation, including but not limited account creation, and password
+generation.
+"""
+
+import random
+import string
+import sys
+import os
+import json
+
+from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound
+from sqlalchemy.exc import IntegrityError
+
+import database
+
+def format_response(inp):
+    """
+    Format the dictionary representing the response into a valid,
+    machine-readable format. This includes injecting a "status" field.
+    Currently, the machine-readable format is json, but this may
+    change in the future.
+    """
+    inp['status'] = 0
+    if 'error' in inp:
+        inp['status'] = 1
+    return json.dumps(inp)
+
+def generate_password(length=10):
+    """
+    Generate a random password of the specified length (10 by default)
+    using the ascii letters, digits, and some special characters.
+    """
+    available_chars = string.ascii_letters + string.digits + '!@#$%^&*()'
+    return ''.join([random.SystemRandom().choice(available_chars) for _ in xrange(length)])
+
+def ensure_authorized(original_function):
+    def ensure_inner(*args, **kwargs):
+        username, target = args[0], args[1]
+        if not is_authorized(username, target):
+            raise Exception("User '%s' not authorized for '%s'" %
+                            (username, target))
+        return original_function(*args, **kwargs)
+    return ensure_inner
+
+def get_user(s, target):
+    try:
+        user = s.query(database.User).filter_by(Username=target).one()
+    except MultipleResultsFound, e:
+        raise Exception('Fatal error: username uniqueness constraint was violated.')
+    except NoResultFound, e:
+        raise Excepton("User '%s' is not signed up for a sql account" % (target,))
+    return user
+
+@ensure_authorized
+def account_create(username, target, args):
+    """
+    Create the specified target account, if the username (originator)
+    is authorized.
+    """
+    s = database.get_session()
+    password = generate_password()
+    user = database.User(target, password, 'Tester created by achernya',
+                         'achernya+test@mit.edu')
+    s.add(user)
+    s.add(database.UserQuota(user))
+    s.add(database.UserStat(user))
+    try:
+        s.commit()
+    except IntegrityError, e:
+        return {'error': "User '%s' already has a sql account!" % (target,)}
+
+    result = s.execute(
+        "CREATE USER :user@'%' IDENTIFIED BY :pass",
+        {'user': target, 'pass': password}
+        )
+    
+    return {'password': password}
+
+@ensure_authorized
+def account_delete(username, target, args):
+    s = database.get_session()
+    user = get_user(s, target)
+    s.delete(user)
+    s.commit()
+    
+    result = s.execute(
+        "DROP USER :user@'%'",
+        {'user': target}
+        )
+
+    return {}
+
+def whoami(*args):
+    kerberos_name = os.environ['REMOTE_USER']
+    username, _ = string.split(kerberos_name, '@', 2)
+    s = database.get_session()
+    exists = True
+    try:
+        s.query(database.User).filter_by(Username=username).one()
+    except:
+        exists = False
+    return {'krb5_princ': kerberos_name, 'username': username, 'exists': exists}
+
+def is_auth(username, target, args):
+    return {'result': is_authorized(username, target)}
+
+@ensure_authorized
+def password_set(username, target, args):
+    s = database.get_session()
+    user = get_user(s, target)
+    new_password = args[0]
+    user.set_password(new_password)
+    s.commit()
+    result = s.execute(
+        "SET PASSWORD FOR :user@'%' = PASSWORD(:pass)",
+        {'user': target, 'pass': new_password})
+    return {}
+
+def password_set_random(username, target, args):
+    new_password = generate_password()
+    password_set(username, target, [new_password])
+    return {'password': new_password}
+
+def is_authorized(username, target):
+    # THE RULES:
+    # -- a user is authorized for itself
+    # -- a user is authorized on lockers they have an 'a' bit on
+    # -- the sql maintainer team is authorized on all queries
+    # -- all else is unauthorized
+    if username == target:
+        return True
+    if target == 'tester-achernya':
+        return True
+    return False
+
+def main():
+    # Figure out which function we are supposed to run
+    argv = sys.argv
+    argc = len(argv)
+    if argc == 1:
+        print format_response(
+            {'error': 'No operation specified. Try `remctl sql help`.'})
+        sys.exit(1)
+    base = os.path.basename(argv[0])
+    mode = argv[1]
+    account = {'create': account_create,
+               'delete': account_delete,
+               'whoami': whoami,
+               'is-auth': is_auth,
+               }
+    password = {'set': password_set,
+                'generate': password_set_random,
+                }
+    ops = {'account': account, 'password': password}
+    op = ops.get(base, {}).get(mode, None)
+    if op == None:
+        print format_response(
+            {'error': "Operation '%s %s' not known. Try `remctl sql help`."
+             % (base, mode,)})
+        sys.exit(1)
+    # Now, figure out what the target locker is. It's possible there
+    # isn't one, in which case we use the username as the sole argument
+    username = whoami()['username']
+    target = None
+    args = None
+    # Horrible special case: we don't actually want whoami to take a target, so append ''
+    if base == 'account' and mode == 'whoami':
+        argv += ['']
+    try:
+        target, args = argv[2], argv[3:]
+    except:
+        print format_response({'error': 'Insufficient arguments specified'})
+        sys.exit(1)
+    try:
+        print format_response(op(username, target, args))
+    except Exception as e:
+        print format_response({'error': str(e)})
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main()
