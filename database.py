@@ -133,13 +133,16 @@ class User(Base):
 
     def __init__(self, Username, Password, Name, Email):
         self.Username = Username
-        self.Password = base64.b64encode(Password)
         self.Name = Name
         self.Email = Email
         self.UL = 1
         self.dCreated = dt.now()
         self.dSignup = dt.now()
         self.bEnabled = 1
+        self.set_password(Password)
     
+    def set_password(self, Password):
+        self.Password = base64.b64encode(Password)
+
     def __repr__(self):
         return "<User('%d','%s')>" % (self.UserId, self.Username)

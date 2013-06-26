@@ -38,14 +38,26 @@ def generate_password(length=10):
     available_chars = string.ascii_letters + string.digits + '!@#$%^&*()'
     return ''.join([random.choice(available_chars) for _ in xrange(length)])
 
-def create(username, target):
+def ensure_authorization(username, target):
+    if not is_authorized(username, target):
+        raise Exception("User '%s' not authorized for '%s'" %
+                (username, target))
+
+def get_user(s, target):
+    try:
+        user = s.query(database.User).filter_by(Username=target).one()
+    except MultipleResultsFound, e:
+        raise Exception('Fatal error: username uniqueness constraint was violated.')
+    except NoResultFound, e:
+        raise Excepton("User '%s' is not signed up for a sql account" % (target,))
+    return user
+
+def account_create(username, target, args):
     """
     Create the specified target account, if the username (originator)
     is authorized.
     """
-    if not is_authorized(username, target):
-        return {'error': "User '%s' not authorized for '%s'" %
-                (username, target)}
+    ensure_authorization(username, target)
     s = database.get_session()
     password = generate_password()
     user = database.User(target, password, 'Tester created by achernya',
@@ -65,18 +77,10 @@ def create(username, target):
     
     return {'password': password}
 
-def delete(username, target):
-    if not is_authorized(username, target):
-        return {'error': "User '%s' not authorized for '%s'" %
-                (username, target)}
+def account_delete(username, target, args):
+    ensure_authorization(username, target)
     s = database.get_session()
-    try:
-        user = s.query(database.User).filter_by(Username=target).one()
-    except MultipleResultsFound, e:
-        return {'error':
-                    'Fatal error: username uniqueness constraint was violated.'}
-    except NoResultFound, e:
-        return {'error': "User '%s' is not signed up for a sql account" % (target,)}
+    user = get_user(s, target)
     s.delete(user)
     s.commit()
     
@@ -98,6 +102,25 @@ def whoami(*args):
         exists = False
     return {'krb5_princ': kerberos_name, 'username': username, 'exists': exists}
 
+def is_auth(username, target, args):
+    return {'result': is_authorized(username, target)}
+
+def password_set(username, target, args):
+    ensure_authorization(username, target)
+    s = database.get_session()
+    user = get_user(s, target)
+    new_password = args[0]
+    user.set_password(new_password)
+    result = s.execute(
+        "SET PASSWORD FOR :user@'%' = PASSWORD(:pass)",
+        {'user': target, 'pass': new_password})
+    return {}
+
+def password_set_random(username, target, args):
+    new_password = generate_password()
+    password_set(username, target, [new_password])
+    return {'password': new_password}
+
 def is_authorized(username, target):
     # THE RULES:
     # -- a user is authorized for itself
@@ -116,28 +139,39 @@ def main():
     argc = len(argv)
     if argc == 1:
         print format_response(
-            {'error':'No operation specified. Try `remctl sql help`.'})
+            {'error': 'No operation specified. Try `remctl sql help`.'})
         sys.exit(1)
+    base = os.path.basename(argv[0])
     mode = argv[1]
-    ops = {'create': create, 
-           'delete': delete,
-           'whoami': whoami,
-           }
-    op = ops.get(mode, None)
+    account = {'create': account_create,
+               'delete': account_delete,
+               'whoami': whoami,
+               'is-auth': is_auth,
+               }
+    password = {'set': password_set,
+                'generate': password_set_random,
+                }
+    ops = {'account': account, 'password': password}
+    op = ops.get(base, {}).get(mode, None)
     if op == None:
         print format_response(
-            {'error': "Operation '%s' not known. Try `remctl sql help`."
-             % (mode,)})
+            {'error': "Operation '%s %s' not known. Try `remctl sql help`."
+             % (argv[0], mode,)})
         sys.exit(1)
     # Now, figure out what the target locker is. It's possible there
     # isn't one, in which case we use the username as the sole argument
     username = whoami()['username']
-    args = username
-    # Throw away any other arguments for now
-    if argc > 2:
-        args = argv[2]
-    
-    print format_response(op(username, args))
+    target = None
+    args = None
+    try:
+        target, args = argv[2], argv[3:]
+    except:
+        print format_response({'error': 'Insufficient arguments specified'})
+        return
+    try:
+        print format_response(op(username, target, args))
+    except Exception as e:
+        print format_response({'error': str(e)})
 
 if __name__ == '__main__':
     main()
