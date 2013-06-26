@@ -38,10 +38,14 @@ def generate_password(length=10):
     available_chars = string.ascii_letters + string.digits + '!@#$%^&*()'
     return ''.join([random.choice(available_chars) for _ in xrange(length)])
 
-def ensure_authorization(username, target):
-    if not is_authorized(username, target):
-        raise Exception("User '%s' not authorized for '%s'" %
-                (username, target))
+def ensure_authorized(original_function):
+    def ensure_inner(*args, **kwargs):
+        username, target = args[0], args[1]
+        if not is_authorized(username, target):
+            raise Exception("User '%s' not authorized for '%s'" %
+                            (username, target))
+        return original_function(*args, **kwargs)
+    return ensure_inner
 
 def get_user(s, target):
     try:
@@ -52,12 +56,12 @@ def get_user(s, target):
         raise Excepton("User '%s' is not signed up for a sql account" % (target,))
     return user
 
+@ensure_authorized
 def account_create(username, target, args):
     """
     Create the specified target account, if the username (originator)
     is authorized.
     """
-    ensure_authorization(username, target)
     s = database.get_session()
     password = generate_password()
     user = database.User(target, password, 'Tester created by achernya',
@@ -68,7 +72,7 @@ def account_create(username, target, args):
     try:
         s.commit()
     except IntegrityError, e:
-        return {'error': "User '%s' already has a sql account!" % (username,)}
+        return {'error': "User '%s' already has a sql account!" % (target,)}
 
     result = s.execute(
         "CREATE USER :user@'%' IDENTIFIED BY :pass",
@@ -77,8 +81,8 @@ def account_create(username, target, args):
     
     return {'password': password}
 
+@ensure_authorized
 def account_delete(username, target, args):
-    ensure_authorization(username, target)
     s = database.get_session()
     user = get_user(s, target)
     s.delete(user)
@@ -105,8 +109,8 @@ def whoami(*args):
 def is_auth(username, target, args):
     return {'result': is_authorized(username, target)}
 
+@ensure_authorized
 def password_set(username, target, args):
-    ensure_authorization(username, target)
     s = database.get_session()
     user = get_user(s, target)
     new_password = args[0]
