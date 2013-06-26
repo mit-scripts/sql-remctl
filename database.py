@@ -51,6 +51,7 @@ class DBOwner(Base):
     def __init__(self, user, database):
         self.user = user
         self.database = database
+        self.GroupId = 0
 
     def __repr__(self):
         return "<DBOwner('%d', '%d', '%d')>"  \

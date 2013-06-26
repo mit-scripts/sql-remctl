@@ -12,6 +12,7 @@ import string
 import sys
 import os
 import json
+import MySQLdb
 
 from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound
 from sqlalchemy.exc import IntegrityError
@@ -53,8 +54,17 @@ def get_user(s, target):
     except MultipleResultsFound, e:
         raise Exception('Fatal error: username uniqueness constraint was violated.')
     except NoResultFound, e:
-        raise Excepton("User '%s' is not signed up for a sql account" % (target,))
+        raise Exception("User '%s' is not signed up for a sql account" % (target,))
     return user
+
+def get_database(s, db_name):
+    try:
+        db = s.query(database.Database).filter_by(Name=db_name).one()
+    except MultipleResultsFound, e:
+        raise Exception('Fatal error: database uniqueness constraint was violated.')
+    except NoResultFound, e:
+        raise Exception("Database '%s' does not exist" % (db_name,))
+    return db
 
 @ensure_authorized
 def account_create(username, target, args):
@@ -113,12 +123,72 @@ def is_auth(username, target, args):
 def password_set(username, target, args):
     s = database.get_session()
     user = get_user(s, target)
+    if len(args) != 1:
+        raise Exception("Invalid number of arguments specified")
     new_password = args[0]
     user.set_password(new_password)
     s.commit()
     result = s.execute(
         "SET PASSWORD FOR :user@'%' = PASSWORD(:pass)",
         {'user': target, 'pass': new_password})
+    return {}
+
+@ensure_authorized
+def database_create(username, target, args):
+    s = database.get_session()
+    user = get_user(s, target)
+    if len(args) != 1:
+        raise Exception("Invalid number of arguments specified")
+    db_name = args[0]
+    full_db_name = '%s+%s' % (target, db_name)
+    db = database.Database(full_db_name)
+    s.add(db)
+    s.add(database.DBOwner(user, db))
+    s.add(database.DBQuota(db))
+    try:
+        s.commit()
+    except IntegrityError, e:
+        return {'error': "Database '%s' already exists!" % (full_db_name,), 'where': 'metadata'}
+
+    # Create the actual database
+    escaped_name = MySQLdb.escape_string(full_db_name)
+    try:
+        result = s.execute(
+            "CREATE DATABASE `%s`" % (escaped_name,),
+            {}
+            )
+    except:
+        s.delete(db)
+        s.commit()
+        return {'error': "Database '%s' already exists!" % (full_db_name,), 'where': 'sql'}
+    # And grant the user privileges on it
+    result = s.execute(
+        "GRANT ALL ON `" + escaped_name + "`.* TO :user@'%'" ,
+        {'user': target}
+        )
+    return {'db_name': full_db_name}
+
+@ensure_authorized
+def database_drop(username, target, args):
+    if len(args) != 1:
+        raise Exception("Invalid number of arguments specified")
+    db_name = args[0]
+    s = database.get_session()
+    db = get_database(s, '%s+%s' % (target, db_name))
+    s.delete(db)
+    s.commit()
+    # Delete the actual database
+    escaped_name = MySQLdb.escape_string(db.Name)
+    result = s.execute(
+        "DROP DATABASE IF EXISTS `%s`" % (escaped_name,),
+        {}
+        )
+    # And revoke the user privileges on it
+    result = s.execute(
+        "REVOKE ALL ON `" + escaped_name + "`.* FROM :user@'%'" ,
+        {'user': target}
+        )
+
     return {}
 
 def password_set_random(username, target, args):
@@ -156,7 +226,10 @@ def main():
     password = {'set': password_set,
                 'generate': password_set_random,
                 }
-    ops = {'account': account, 'password': password}
+    database = {'create': database_create,
+                'drop': database_drop,
+                }
+    ops = {'account': account, 'password': password, 'database': database}
     op = ops.get(base, {}).get(mode, None)
     if op == None:
         print format_response(

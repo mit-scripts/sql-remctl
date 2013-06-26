@@ -6,6 +6,8 @@ Commands:
   account delete    - delete a sql.mit.edu account
   account whoami    - check who the sql.mit.edu server thinks you are
   account is-auth   - check if you're authorized on the specified account
+  database create   - create the specified database
+  database drop     - drop the specified database
   password set      - change account password as specified
   password generate - generate and set a new random password
   help              - print this help
