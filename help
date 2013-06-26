@@ -8,5 +8,5 @@ Commands:
   account is-auth   - check if you're authorized on the specified account
   password set      - change account password as specified
   password generate - generate and set a new random password
-  help <anything>   - print this help
+  help              - print this help
 EOF
