@@ -36,7 +36,7 @@ def generate_password(length=10):
     using the ascii letters, digits, and some special characters.
     """
     available_chars = string.ascii_letters + string.digits + '!@#$%^&*()'
-    return ''.join([random.choice(available_chars) for _ in xrange(length)])
+    return ''.join([random.SystemRandom().choice(available_chars) for _ in xrange(length)])
 
 def ensure_authorized(original_function):
     def ensure_inner(*args, **kwargs):
