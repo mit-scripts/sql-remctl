@@ -19,16 +19,23 @@ from sqlalchemy.exc import IntegrityError
 
 import database
 
-def format_response(inp):
+class NotifyUserError(Exception):
+    """All errors of this class will be reported through the API as
+    having status = '1', meaning that it was an error condition due to
+    to a check in the sql-remctl progrma itself. All other Exceptions
+    will be reported as status = '2', meaning they are most likely
+    programmer error and need to be reported back to the
+    developers."""
+    pass
+
+def format_response(inp, status=0):
     """
     Format the dictionary representing the response into a valid,
     machine-readable format. This includes injecting a "status" field.
     Currently, the machine-readable format is json, but this may
     change in the future.
     """
-    inp['status'] = 0
-    if 'error' in inp:
-        inp['status'] = 1
+    inp['status'] = status
     return json.dumps(inp)
 
 def generate_password(length=10):
@@ -43,8 +50,8 @@ def ensure_authorized(original_function):
     def ensure_inner(*args, **kwargs):
         username, target = args[0], args[1]
         if not is_authorized(username, target):
-            raise Exception("User '%s' not authorized for '%s'" %
-                            (username, target))
+            raise NotifyUserError("User '%s' not authorized for '%s'" %
+                                  (username, target))
         return original_function(*args, **kwargs)
     return ensure_inner
 
@@ -54,7 +61,7 @@ def get_user(s, target):
     except MultipleResultsFound as e:
         raise Exception('Fatal error: username uniqueness constraint was violated.')
     except NoResultFound as e:
-        raise Exception("User '%s' is not signed up for a sql account" % (target,))
+        raise NotifyUserError("User '%s' is not signed up for a sql account" % (target,))
     return user
 
 def get_database(s, db_name):
@@ -63,7 +70,7 @@ def get_database(s, db_name):
     except MultipleResultsFound as e:
         raise Exception('Fatal error: database uniqueness constraint was violated.')
     except NoResultFound as e:
-        raise Exception("Database '%s' does not exist" % (db_name,))
+        raise NotifyUserError("Database '%s' does not exist" % (db_name,))
     return db
 
 @ensure_authorized
@@ -82,7 +89,7 @@ def account_create(username, target, args):
     try:
         s.commit()
     except IntegrityError as e:
-        return {'error': "User '%s' already has a sql account!" % (target,)}
+        raise NotifyUserError("User '%s' already has a sql account!" % (target,))
 
     result = s.execute(database.CreateUser(target, '%', password))
 
@@ -118,7 +125,7 @@ def password_set(username, target, args):
     s = database.get_session()
     user = get_user(s, target)
     if len(args) != 1:
-        raise Exception("Invalid number of arguments specified")
+        raise NotifyUserError("Invalid number of arguments specified")
     new_password = args[0]
     user.set_password(new_password)
     s.commit()
@@ -130,18 +137,18 @@ def database_create(username, target, args):
     s = database.get_session()
     user = get_user(s, target)
     if len(args) != 1:
-        raise Exception("Invalid number of arguments specified")
+        raise NotifyUserError("Invalid number of arguments specified")
 
     db_name = args[0]
 
     # We can only create databases if we're under the limit
     have_dbs = sum([x.database.bEnabled for x in user.databases])
     if have_dbs >= user.quota.nDatabasesHard:
-        raise Exception("Cannot create database '%s'; '%s' has %d but the limit is %d" \
+        raise NotifyUserError("Cannot create database '%s'; '%s' has %d but the limit is %d" \
                             % (db_name, target, have_dbs, user.quota.nDatabasesHard))
     # Similarly, if the databases are too large, fail out
     if user.stat.nBytes > user.quota.nBytesHard:
-        raise Exception("Cannot create database '%s'; '%s' has used %d bytes but the limit is %d" \
+        raise NotifyUserError("Cannot create database '%s'; '%s' has used %d bytes but the limit is %d" \
                             % (db_name, target, user.stat.nBytes, user.quota.nBytesHard))
 
     full_db_name = '%s+%s' % (target, db_name)
@@ -168,7 +175,7 @@ def database_create(username, target, args):
 @ensure_authorized
 def database_drop(username, target, args):
     if len(args) != 1:
-        raise Exception("Invalid number of arguments specified")
+        raise NotifyUserError("Invalid number of arguments specified")
     db_name = args[0]
     s = database.get_session()
     db = get_database(s, '%s+%s' % (target, db_name))
@@ -203,8 +210,7 @@ def main():
     argv = sys.argv
     argc = len(argv)
     if argc == 1:
-        print format_response(
-            {'error': 'No operation specified. Try `remctl sql help`.'})
+        raise NotifyUserError('No operation specified. Try `remctl sql help`.')
         sys.exit(1)
     base = os.path.basename(argv[0])
     mode = argv[1]
@@ -222,10 +228,8 @@ def main():
     ops = {'account': account, 'password': password, 'database': database}
     op = ops.get(base, {}).get(mode, None)
     if op == None:
-        print format_response(
-            {'error': "Operation '%s %s' not known. Try `remctl sql help`."
-             % (base, mode,)})
-        sys.exit(1)
+        raise NotifyUserError("Operation '%s %s' not known. Try `remctl sql help`." % (base, mode,))
+
     # Now, figure out what the target locker is. It's possible there
     # isn't one, in which case we use the username as the sole argument
     username = whoami()['username']
@@ -237,13 +241,17 @@ def main():
     try:
         target, args = argv[2], argv[3:]
     except:
-        print format_response({'error': 'Insufficient arguments specified'})
-        sys.exit(1)
-    try:
-        print format_response(op(username, target, args))
-    except Exception as e:
-        print format_response({'error': str(e)})
-        sys.exit(1)
+        raise NotifyUserError('Insufficient arguments specified')
+
+    print format_response(op(username, target, args))
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+        sys.exit(0)
+    except NotifyUserError as nue:
+        print format_response({'error': str(nue)}, status=1)
+    except Exception as e:
+        print format_response({'error': str(e)}, status=2)
+
+    sys.exit(1)
