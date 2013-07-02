@@ -12,7 +12,6 @@ import string
 import sys
 import os
 import json
-import MySQLdb
 
 from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound
 from sqlalchemy.exc import IntegrityError
