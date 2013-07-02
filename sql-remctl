@@ -20,12 +20,13 @@ from sqlalchemy.exc import IntegrityError
 import database
 
 class NotifyUserError(Exception):
-    """All errors of this class will be reported through the API as
+    """
+    All errors of this class will be reported through the API as
     having status = '1', meaning that it was an error condition due to
     to a check in the sql-remctl progrma itself. All other Exceptions
     will be reported as status = '2', meaning they are most likely
-    programmer error and need to be reported back to the
-    developers."""
+    programmer error and need to be reported back to the developers.
+    """
     pass
 
 def format_response(inp, status=0):
@@ -49,6 +50,12 @@ def generate_password(length=10):
     return ''.join([random.SystemRandom().choice(available_chars) for _ in xrange(length)])
 
 def ensure_authorized(original_function):
+    """
+    Decorator to ensure that the user is authorized before performing
+    actions. Add this to any method that performs a sensitive
+    operation and it will only be executed if the user is properly
+    authorized.
+    """
     def ensure_inner(*args, **kwargs):
         username, target = args[0], args[1]
         if not is_authorized(username, target):
@@ -58,6 +65,12 @@ def ensure_authorized(original_function):
     return ensure_inner
 
 def get_user(s, target):
+    """
+    Convenience method to query the database and retrieve the User
+    record. This method will throw an exception if the uniqueness
+    constraint on the user is violated. This method will also throw a
+    notify-user-error if the user account is not found.
+    """
     try:
         user = s.query(database.User).filter_by(Username=target).one()
     except MultipleResultsFound as e:
@@ -67,6 +80,10 @@ def get_user(s, target):
     return user
 
 def get_database(s, db_name):
+    """
+    Convenience method to query the database and retrieve the Database
+    record. This method has the same semantics as get_user().
+    """
     try:
         db = s.query(database.Database).filter_by(Name=db_name).one()
     except MultipleResultsFound as e:
@@ -99,6 +116,10 @@ def account_create(username, target, args):
 
 @ensure_authorized
 def account_delete(username, target, args):
+    """
+    Delete the specified target account, if the username (originator)
+    is authorized.
+    """
     s = database.get_session()
     user = get_user(s, target)
     s.delete(user)
@@ -109,6 +130,10 @@ def account_delete(username, target, args):
     return {}
 
 def whoami(*args):
+    """
+    Interrogate the server about your identity. Conveniently, also
+    learn if you currently have a sql account.
+    """
     kerberos_name = os.environ['REMOTE_USER']
     username, _ = string.split(kerberos_name, '@', 2)
     s = database.get_session()
@@ -120,10 +145,18 @@ def whoami(*args):
     return {'krb5_princ': kerberos_name, 'username': username, 'exists': exists}
 
 def is_auth(username, target, args):
+    """
+    Determine if the specified username is authorized on the target,
+    and report the value. This does not reveal account existence.
+    """
     return {'result': is_authorized(username, target)}
 
 @ensure_authorized
 def password_set(username, target, args):
+    """
+    Set the target's password to the specified value, if the
+    originator is authorized.
+    """
     s = database.get_session()
     user = get_user(s, target)
     if len(args) != 1:
@@ -136,6 +169,10 @@ def password_set(username, target, args):
 
 @ensure_authorized
 def database_create(username, target, args):
+    """
+    Create a new database, enforcing the account+dbname naming scheme,
+    database limit, and byte quotas.
+    """
     s = database.get_session()
     user = get_user(s, target)
     if len(args) != 1:
@@ -176,6 +213,9 @@ def database_create(username, target, args):
 
 @ensure_authorized
 def database_drop(username, target, args):
+    """
+    Drop the specified database.
+    """
     if len(args) != 1:
         raise NotifyUserError("Invalid number of arguments specified")
     db_name = args[0]
@@ -191,6 +231,11 @@ def database_drop(username, target, args):
     return {}
 
 def password_set_random(username, target, args):
+    """
+    Generate a new random password for the specified account. This
+    method does not require authorization, because it uses
+    password_set, which does.
+    """
     new_password = generate_password()
     password_set(username, target, [new_password])
     return {'password': new_password}
