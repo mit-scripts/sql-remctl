@@ -7,8 +7,10 @@ sql.mit.edu database models
 import sqlalchemy
 import sqlalchemy.orm
 import sqlalchemy.ext.declarative
-from sqlalchemy.schema import ForeignKey
+from sqlalchemy.sql.expression import text, bindparam
+from sqlalchemy.schema import ForeignKey, DDLElement
 from sqlalchemy.engine.url import URL
+from sqlalchemy.ext.compiler import compiles
 
 from datetime import datetime as dt
 import base64
@@ -147,3 +149,88 @@ class User(Base):
 
     def __repr__(self):
         return "<User('%d','%s')>" % (self.UserId, self.Username)
+
+def formatify(instr):
+    """This function is an ugly hack, because something in
+    MySQLdb/sqlalchemy goes wrong whenever there's a '%' (wildcard)
+    character, and it tries to run it through python's string
+    formatter. This is teribly, but it's better than being
+    insecure. Deal by escaping the %s."""
+    return instr.replace('%', '%%')
+
+class CreateDatabase(DDLElement):
+    def __init__(self, name):
+        self.name = name
+
+@compiles(CreateDatabase)
+def visit_create_database(element, compiler, **kw):
+    return formatify("CREATE DATABASE %s" % (compiler.preparer.quote_identifier(element.name),))
+
+class DropDatabase(DDLElement):
+    def __init__(self, name, ignore=False):
+        self.name = name
+        self.ignore = ignore
+
+@compiles(DropDatabase)
+def visit_drop_database(element, compiler, **kw):
+    if_exists = "IF EXISTS" if element.ignore else ""
+    return formatify("DROP DATABASE %s %s" % (if_exists, compiler.preparer.quote_identifier(element.name)))
+
+class CreateUser(DDLElement):
+    def __init__(self, name, host, passwd):
+        self.name = name
+        self.host = host
+        self.passwd = passwd
+
+@compiles(CreateUser)
+def visit_create_user(element, compiler, **kw):
+    return formatify("CREATE USER %s@%s IDENTIFIED BY %s" % \
+        tuple([compiler.sql_compiler.render_literal_value(x, sqlalchemy.String) for x in (element.name, element.host, element.passwd)]))
+
+class DropUser(DDLElement):
+    def __init__(self, name, host):
+        self.name = name
+        self.host = host
+
+@compiles(DropUser)
+def visit_drop_user(element, compiler, **kw):
+    return formatify("DROP USER %s@%s" % \
+        tuple([compiler.sql_compiler.render_literal_value(x, sqlalchemy.String) for x in (element.name, element.host)]))
+
+class ChangePassword(DDLElement):
+    def __init__(self, name, host, passwd):
+        self.name = name
+        self.host = host
+        self.passwd = passwd
+
+@compiles(ChangePassword)
+def visit_change_password(element, compiler, **kw):
+    return formatify("SET PASSWORD FOR %s@%s = PASSWORD(%s)" % \
+        tuple([compiler.sql_compiler.render_literal_value(x, sqlalchemy.String) for x in (element.name, element.host, element.passwd)]))
+
+class Grant(DDLElement):
+    def __init__(self, db, user, host):
+        self.db = db
+        self.user = user
+        self.host = host
+
+@compiles(Grant)
+def visit_grant(element, compiler, **kw):
+    return formatify("GRANT ALL ON %s.* TO %s@%s" % \
+        (compiler.preparer.quote_identifier(element.db),
+         compiler.sql_compiler.render_literal_value(element.user, sqlalchemy.String),
+         compiler.sql_compiler.render_literal_value(element.host, sqlalchemy.String)))
+
+class Revoke(DDLElement):
+    def __init__(self, db, user, host):
+        self.db = db
+        self.user = user
+        self.host = host
+
+@compiles(Revoke)
+def visit_revoke(element, compiler, **kw):
+    return formatify("REVOKE ALL ON %s.* FROM %s@%s" % \
+        (compiler.preparer.quote_identifier(element.db),
+         compiler.sql_compiler.render_literal_value(element.user, sqlalchemy.String),
+         compiler.sql_compiler.render_literal_value(element.host, sqlalchemy.String)))
+

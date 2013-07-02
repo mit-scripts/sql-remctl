@@ -51,18 +51,18 @@ def ensure_authorized(original_function):
 def get_user(s, target):
     try:
         user = s.query(database.User).filter_by(Username=target).one()
-    except MultipleResultsFound, e:
+    except MultipleResultsFound as e:
         raise Exception('Fatal error: username uniqueness constraint was violated.')
-    except NoResultFound, e:
+    except NoResultFound as e:
         raise Exception("User '%s' is not signed up for a sql account" % (target,))
     return user
 
 def get_database(s, db_name):
     try:
         db = s.query(database.Database).filter_by(Name=db_name).one()
-    except MultipleResultsFound, e:
+    except MultipleResultsFound as e:
         raise Exception('Fatal error: database uniqueness constraint was violated.')
-    except NoResultFound, e:
+    except NoResultFound as e:
         raise Exception("Database '%s' does not exist" % (db_name,))
     return db
 
@@ -81,14 +81,11 @@ def account_create(username, target, args):
     s.add(database.UserStat(user))
     try:
         s.commit()
-    except IntegrityError, e:
+    except IntegrityError as e:
         return {'error': "User '%s' already has a sql account!" % (target,)}
 
-    result = s.execute(
-        "CREATE USER :user@'%' IDENTIFIED BY :pass",
-        {'user': target, 'pass': password}
-        )
-    
+    result = s.execute(database.CreateUser(target, '%', password))
+
     return {'password': password}
 
 @ensure_authorized
@@ -98,10 +95,7 @@ def account_delete(username, target, args):
     s.delete(user)
     s.commit()
     
-    result = s.execute(
-        "DROP USER :user@'%'",
-        {'user': target}
-        )
+    result = s.execute(database.DropUser(target, '%'))
 
     return {}
 
@@ -128,9 +122,7 @@ def password_set(username, target, args):
     new_password = args[0]
     user.set_password(new_password)
     s.commit()
-    result = s.execute(
-        "SET PASSWORD FOR :user@'%' = PASSWORD(:pass)",
-        {'user': target, 'pass': new_password})
+    result = s.execute(database.ChangePassword(target, '%', new_password))
     return {}
 
 @ensure_authorized
@@ -148,9 +140,9 @@ def database_create(username, target, args):
         raise Exception("Cannot create database '%s'; '%s' has %d but the limit is %d" \
                             % (db_name, target, have_dbs, user.quota.nDatabasesHard))
     # Similarly, if the databases are too large, fail out
-    if user.quota.nBytes > user.quota.nBytesHard:
+    if user.stat.nBytes > user.quota.nBytesHard:
         raise Exception("Cannot create database '%s'; '%s' has used %d bytes but the limit is %d" \
-                            % (db_name, target, user.quota.nBytes, user.quota.nBytesHard))
+                            % (db_name, target, user.stat.nBytes, user.quota.nBytesHard))
 
     full_db_name = '%s+%s' % (target, db_name)
     db = database.Database(full_db_name)
@@ -163,21 +155,14 @@ def database_create(username, target, args):
         return {'error': "Database '%s' already exists!" % (full_db_name,), 'where': 'metadata'}
 
     # Create the actual database
-    escaped_name = MySQLdb.escape_string(full_db_name)
     try:
-        result = s.execute(
-            "CREATE DATABASE `%s`" % (escaped_name,),
-            {}
-            )
+        result = s.execute(database.CreateDatabase(full_db_name))
     except:
         s.delete(db)
         s.commit()
         return {'error': "Database '%s' already exists!" % (full_db_name,), 'where': 'sql'}
     # And grant the user privileges on it
-    result = s.execute(
-        "GRANT ALL ON `" + escaped_name + "`.* TO :user@'%'" ,
-        {'user': target}
-        )
+    result = s.execute(database.Grant(full_db_name, target, '%'))
     return {'db_name': full_db_name}
 
 @ensure_authorized
@@ -190,16 +175,9 @@ def database_drop(username, target, args):
     s.delete(db)
     s.commit()
     # Delete the actual database
-    escaped_name = MySQLdb.escape_string(db.Name)
-    result = s.execute(
-        "DROP DATABASE IF EXISTS `%s`" % (escaped_name,),
-        {}
-        )
+    result = s.execute(database.DropDatabase(db.Name, ignore=True))
     # And revoke the user privileges on it
-    result = s.execute(
-        "REVOKE ALL ON `" + escaped_name + "`.* FROM :user@'%'" ,
-        {'user': target}
-        )
+    result = s.execute(database.Revoke(db.Name, target, '%'))
 
     return {}
 
