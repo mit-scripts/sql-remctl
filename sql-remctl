@@ -35,7 +35,9 @@ def format_response(inp, status=0):
     Currently, the machine-readable format is json, but this may
     change in the future.
     """
-    inp['status'] = status
+    if not 'status' in inp:
+        # Don't inject if the status is already there
+        inp['status'] = status
     return json.dumps(inp)
 
 def generate_password(length=10):
@@ -159,7 +161,7 @@ def database_create(username, target, args):
     try:
         s.commit()
     except IntegrityError, e:
-        return {'error': "Database '%s' already exists!" % (full_db_name,), 'where': 'metadata'}
+        return {'error': "Database '%s' already exists!" % (full_db_name,), 'where': 'metadata', 'status': 1}
 
     # Create the actual database
     try:
@@ -167,7 +169,7 @@ def database_create(username, target, args):
     except:
         s.delete(db)
         s.commit()
-        return {'error': "Database '%s' already exists!" % (full_db_name,), 'where': 'sql'}
+        return {'error': "Database '%s' already exists!" % (full_db_name,), 'where': 'sql', 'status': 1}
     # And grant the user privileges on it
     result = s.execute(database.Grant(full_db_name, target, '%'))
     return {'db_name': full_db_name}
