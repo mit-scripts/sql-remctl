@@ -7,11 +7,13 @@ manipulation, including but not limited account creation, and password
 generation.
 """
 
+import json
+import ldap
+import ldap.filter
+import os
 import random
 import string
 import sys
-import os
-import json
 
 from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound
 from sqlalchemy.exc import IntegrityError
@@ -63,6 +65,25 @@ def ensure_authorized(original_function):
         return original_function(*args, **kwargs)
     return ensure_inner
 
+def get_user_information(target):
+    """
+    Synchronously query the ldap.mit.edu LDAP server for the user's
+    full name, or return '' if not found.
+    """
+    mit_ldap = ldap.initialize('ldap://ldap.mit.edu')
+    mit_ldap.simple_bind_s()
+    default_user = ['junk', {'cn': ['']}]
+    result, = mit_ldap.search_s(
+        'ou=users,ou=moira,dc=mit,dc=edu',
+        ldap.SCOPE_SUBTREE,
+        ldap.filter.filter_format(
+            '(&(objectClass=posixAccount)' +
+            '(uid=%s))',
+            [target])) or [default_user]
+    fullname = result[1]['cn'][0]
+    email = target + '@mit.edu' if fullname != '' else ''
+    return (fullname, email)
+
 def get_user(s, target):
     """
     Convenience method to query the database and retrieve the User
@@ -99,8 +120,8 @@ def account_create(username, target, args):
     """
     s = database.get_session()
     password = generate_password()
-    user = database.User(target, password, 'Tester created by achernya',
-                         'achernya+test@mit.edu')
+    fullname, email = get_user_information(target)
+    user = database.User(target, password, fullname, email)
     s.add(user)
     s.add(database.UserQuota(user))
     s.add(database.UserStat(user))
