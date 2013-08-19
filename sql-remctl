@@ -260,6 +260,38 @@ def password_set_random(username, target, args):
     password_set(username, target, [new_password])
     return {'password': new_password}
 
+@ensure_authorized
+def profile_get(username, target, args):
+    """
+    Get the target's profile, if the originator is authorized.
+    """
+    s = database.get_session()
+    user = get_user(s, target)
+    return {'fullname': user.Name, 'email': user.Email}
+
+@ensure_authorized
+def profile_set(username, target, args):
+    """
+    Set the target's profile, if the originator is authorized.
+    """
+    s = database.get_session()
+    user = get_user(s, target)
+    if len(args) != 1:
+        raise NotifyUserError("Invalid number of arguments specified")
+    try:
+        argsd = json.loads(args[0])
+    except:
+        raise NotifyUserError("Unable to parse specified profile")
+    if type(argsd) is not dict:
+        raise NotifyUserError("Profile must be a dictionary")
+    if 'fullname' in argsd:
+        user.Name = argsd['fullname']
+    if 'email' in argsd:
+        user.Email = argsd['email']
+    s.commit()
+
+    return {}
+
 def is_authorized(username, target):
     # THE RULES:
     # -- a user is authorized for itself
@@ -292,7 +324,10 @@ def main():
     database = {'create': database_create,
                 'drop': database_drop,
                 }
-    ops = {'account': account, 'password': password, 'database': database}
+    profile = {'get': profile_get,
+               'set': profile_set
+               }
+    ops = {'account': account, 'password': password, 'database': database, 'profile': profile}
     op = ops.get(base, {}).get(mode, None)
     if op == None:
         raise NotifyUserError("Operation '%s %s' not known. Try `remctl sql help`." % (base, mode,))
