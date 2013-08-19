@@ -154,7 +154,7 @@ def formatify(instr):
     """This function is an ugly hack, because something in
     MySQLdb/sqlalchemy goes wrong whenever there's a '%' (wildcard)
     character, and it tries to run it through python's string
-    formatter. This is teribly, but it's better than being
+    formatter. This is terrible, but it's better than being
     insecure. Deal by escaping the %s."""
     return instr.replace('%', '%%')
 
