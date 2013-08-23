@@ -8,6 +8,7 @@ Commands:
   account whoami    - check who the sql.mit.edu server thinks you are
   database create   - create the specified database
   database drop     - drop the specified database
+  database list     - list all of the user's databases
   password generate - generate and set a new random password
   password set      - change account password as specified
   profile get       - get the account's profile (name and contact address)
