@@ -250,6 +250,22 @@ def database_drop(username, target, args):
 
     return {}
 
+@ensure_authorized
+def database_list(username, target, args):
+    """
+    List the specific database
+    """
+    s = database.get_session()
+    user = get_user(s, target)
+    if len(args) != 0:
+        raise NotifyUserError("Invalid number of arguments specified")
+
+    db_info = []
+    for db in user.databases:
+        db_info.append({'name': db.Name, 'size': db.nBytes})
+
+    return {'quota': user.quota.nBytesHard, 'databases': db_info}
+
 def password_set_random(username, target, args):
     """
     Generate a new random password for the specified account. This
@@ -323,6 +339,7 @@ def main():
                 }
     database = {'create': database_create,
                 'drop': database_drop,
+                'list': database_list,
                 }
     profile = {'get': profile_get,
                'set': profile_set
