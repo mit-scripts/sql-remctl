@@ -262,7 +262,11 @@ def database_list(username, target, args):
 
     db_info = []
     for db in user.databases:
-        db_info.append({'name': db.Name, 'size': db.nBytes})
+        if db.database.bEnabled != 1:
+            # Database is "disabled", which actually means it's
+            # deleted, so don't print it
+            continue
+        db_info.append({'name': db.database.Name, 'size': db.database.nBytes})
 
     return {'quota': user.quota.nBytesHard, 'databases': db_info}
 
