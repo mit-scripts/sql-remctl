@@ -13,6 +13,7 @@ import ldap.filter
 import os
 import random
 import string
+import subprocess
 import sys
 
 from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound
@@ -321,6 +322,16 @@ def is_authorized(username, target):
     if username == target:
         return True
     if target == 'tester-achernya':
+        return True
+    # Run /srv/accountadm/admof to determine the answer
+    krb5_princ = whoami()['krb5_princ']
+    args = ['/srv/accountadm/admof', target, krb5_princ]
+    process = subprocess.Popen(args,
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE)
+    result, _ = process.communicate()
+    if process.returncode == 33:
+        # Magical return code 33 from admof means success
         return True
     return False
 
