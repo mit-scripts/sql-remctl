@@ -8,6 +8,7 @@ import sqlalchemy
 import sqlalchemy.orm
 import sqlalchemy.ext.declarative
 from sqlalchemy.sql.expression import text, bindparam
+from sqlalchemy.dialects import mysql
 from sqlalchemy.schema import ForeignKey, DDLElement
 from sqlalchemy.engine.url import URL
 from sqlalchemy.ext.compiler import compiles
@@ -29,9 +30,9 @@ def get_session():
 
 class DBQuota(Base):
     __tablename__ = 'DBQuota'
-    DatabaseId = sqlalchemy.Column(sqlalchemy.Integer(10), ForeignKey("DB.DatabaseId"), primary_key=True)
-    nBytesSoft = sqlalchemy.Column(sqlalchemy.Integer(10))
-    nBytesHard = sqlalchemy.Column(sqlalchemy.Integer(10))
+    DatabaseId = sqlalchemy.Column(mysql.INTEGER(10), ForeignKey("DB.DatabaseId"), primary_key=True)
+    nBytesSoft = sqlalchemy.Column(mysql.INTEGER(10))
+    nBytesHard = sqlalchemy.Column(mysql.INTEGER(10))
     dCreated = sqlalchemy.Column(sqlalchemy.DateTime())
 
     def __init__(self, database):
@@ -46,9 +47,9 @@ class DBQuota(Base):
 
 class DBOwner(Base):
     __tablename__ = 'DBOwner'
-    DatabaseId = sqlalchemy.Column(sqlalchemy.Integer(10), ForeignKey("DB.DatabaseId"), primary_key=True)
-    UserId = sqlalchemy.Column(sqlalchemy.Integer(10), ForeignKey("User.UserId"), primary_key=True)
-    GroupId = sqlalchemy.Column(sqlalchemy.Integer(10))
+    DatabaseId = sqlalchemy.Column(mysql.INTEGER(10), ForeignKey("DB.DatabaseId"), primary_key=True)
+    UserId = sqlalchemy.Column(mysql.INTEGER(10), ForeignKey("User.UserId"), primary_key=True)
+    GroupId = sqlalchemy.Column(mysql.INTEGER(10))
 
     def __init__(self, user, database):
         self.user = user
@@ -61,12 +62,12 @@ class DBOwner(Base):
 
 class Database(Base):
     __tablename__ = 'DB'
-    DatabaseId = sqlalchemy.Column(sqlalchemy.Integer(10), primary_key=True, autoincrement=True)
+    DatabaseId = sqlalchemy.Column(mysql.INTEGER(10), primary_key=True, autoincrement=True)
     Name = sqlalchemy.Column(sqlalchemy.VARCHAR(200), unique=True)
-    nBytes = sqlalchemy.Column(sqlalchemy.Integer(10))
+    nBytes = sqlalchemy.Column(mysql.INTEGER(10))
     dLastCheck = sqlalchemy.Column(sqlalchemy.DateTime())
     dCreated = sqlalchemy.Column(sqlalchemy.DateTime())
-    bEnabled = sqlalchemy.Column(sqlalchemy.Integer(3))
+    bEnabled = sqlalchemy.Column(mysql.INTEGER(3))
 
     quota = sqlalchemy.orm.relationship(DBQuota, backref=sqlalchemy.orm.backref('database'), cascade='all', uselist=False)
     owner = sqlalchemy.orm.relationship(DBOwner, backref=sqlalchemy.orm.backref('database'), cascade='all', uselist=False)
@@ -84,10 +85,10 @@ class Database(Base):
 
 class UserQuota(Base):
     __tablename__ = 'UserQuota'
-    UserId = sqlalchemy.Column(sqlalchemy.Integer(10), ForeignKey("User.UserId"), primary_key=True)
-    nDatabasesHard = sqlalchemy.Column(sqlalchemy.Integer(10))
-    nBytesSoft = sqlalchemy.Column(sqlalchemy.Integer(10))
-    nBytesHard = sqlalchemy.Column(sqlalchemy.Integer(10))
+    UserId = sqlalchemy.Column(mysql.INTEGER(10), ForeignKey("User.UserId"), primary_key=True)
+    nDatabasesHard = sqlalchemy.Column(mysql.INTEGER(10))
+    nBytesSoft = sqlalchemy.Column(mysql.INTEGER(10))
+    nBytesHard = sqlalchemy.Column(mysql.INTEGER(10))
     dCreated = sqlalchemy.Column(sqlalchemy.DateTime())
 
     def __init__(self, user):
@@ -103,9 +104,9 @@ class UserQuota(Base):
 
 class UserStat(Base):
     __tablename__ = 'UserStat'
-    UserId = sqlalchemy.Column(sqlalchemy.Integer(10), ForeignKey("User.UserId"), primary_key=True)
-    nDatabases = sqlalchemy.Column(sqlalchemy.Integer(10))
-    nBytes = sqlalchemy.Column(sqlalchemy.Integer(10))
+    UserId = sqlalchemy.Column(mysql.INTEGER(10), ForeignKey("User.UserId"), primary_key=True)
+    nDatabases = sqlalchemy.Column(mysql.INTEGER(10))
+    nBytes = sqlalchemy.Column(mysql.INTEGER(10))
     dLastCheck = sqlalchemy.Column(sqlalchemy.DateTime())
 
     def __init__(self, user):
@@ -120,15 +121,15 @@ class UserStat(Base):
 
 class User(Base):
     __tablename__ = 'User'
-    UserId = sqlalchemy.Column(sqlalchemy.Integer(10), primary_key=True, autoincrement=True)
+    UserId = sqlalchemy.Column(mysql.INTEGER(10), primary_key=True, autoincrement=True)
     Username = sqlalchemy.Column(sqlalchemy.VARCHAR(200), unique=True)
     Password = sqlalchemy.Column(sqlalchemy.VARCHAR(200))
     Name = sqlalchemy.Column(sqlalchemy.Text())
     Email = sqlalchemy.Column(sqlalchemy.Text())
-    UL = sqlalchemy.Column(sqlalchemy.Integer(3))
+    UL = sqlalchemy.Column(mysql.INTEGER(3))
     dCreated = sqlalchemy.Column(sqlalchemy.DateTime())
     dSignup = sqlalchemy.Column(sqlalchemy.DateTime())
-    bEnabled = sqlalchemy.Column(sqlalchemy.Integer(3))
+    bEnabled = sqlalchemy.Column(mysql.INTEGER(3))
 
     quota = sqlalchemy.orm.relationship(UserQuota, backref=sqlalchemy.orm.backref('user'), cascade='all', uselist=False)
     stat = sqlalchemy.orm.relationship(UserStat, backref=sqlalchemy.orm.backref('user'), cascade='all', uselist=False)
